@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Space Dash</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            touch-action: none;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        canvas {
+            background: linear-gradient(to bottom, #000033, #000066);
+            touch-action: none;
+        }
+
+        #ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            font-size: 20px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+
+        #menu {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #00ffff;
+        }
+
+        .btn {
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 20px;
+            border-radius: 25px;
+            margin: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            box-shadow: 0 0 20px rgba(0,255,255,0.5);
+            transition: all 0.2s;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 10px rgba(0,255,255,0.5);
+        }
+
+        #title {
+            font-size: 40px;
+            color: #00ffff;
+            text-shadow: 0 0 20px #00ffff;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>SCORE: <span id="score">0</span></div>
+        <div>SHIELD: <span id="shield">100</span>%</div>
+    </div>
+    <canvas id="game"></canvas>
+    <div id="menu">
+        <div id="title">SPACE DASH</div>
+        <button class="btn" id="startBtn">Play Game</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
+        const startBtn = document.getElementById('startBtn');
+        const scoreDisplay = document.getElementById('score');
+        const shieldDisplay = document.getElementById('shield');
+
+        // Set canvas size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let game = {
+            score: 0,
+            shield: 100,
+            speed: 5,
+            running: false,
+            stars: [],
+            enemies: [],
+            powerups: [],
+            particles: []
+        };
+
+        let player = {
+            x: canvas.width / 4,
+            y: canvas.height / 2,
+            size: 30,
+            trail: []
+        };
+
+        // Create initial stars
+        for (let i = 0; i < 100; i++) {
+            game.stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2,
+                speed: Math.random() * 3 + 1
+            });
+        }
+
+        function drawPlayer() {
+            // Draw trail
+            ctx.beginPath();
+            player.trail.forEach((pos, i) => {
+                ctx.fillStyle = `rgba(0, 255, 255, ${i / player.trail.length})`;
+                ctx.fillRect(pos.x, pos.y, player.size * (i / player.trail.length), player.size * (i / player.trail.length));
+            });
+
+            // Draw player
+            ctx.fillStyle = '#00ffff';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ffff';
+            ctx.fillRect(player.x, player.y, player.size, player.size);
+            ctx.shadowBlur = 0;
+        }
+
+        function spawnEnemy() {
+            if (Math.random() < 0.03) {
+                game.enemies.push({
+                    x: canvas.width + 50,
+                    y: Math.random() * (canvas.height - 40),
+                    size: Math.random() * 20 + 20,
+                    speed: Math.random() * 4 + game.speed
+                });
+            }
+        }
+
+        function spawnPowerup() {
+            if (Math.random() < 0.005) {
+                game.powerups.push({
+                    x: canvas.width + 50,
+                    y: Math.random() * (canvas.height - 40),
+                    size: 20,
+                    type: Math.random() < 0.5 ? 'shield' : 'score'
+                });
+            }
+        }
+
+        function createExplosion(x, y) {
+            for (let i = 0; i < 20; i++) {
+                game.particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1
+                });
+            }
+        }
+
+        function updateParticles() {
+            game.particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                
+                ctx.fillStyle = `rgba(255, 0, 0, ${p.life})`;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            
+            game.particles = game.particles.filter(p => p.life > 0);
+        }
+
+        function movePlayer(e) {
+            if (!game.running) return;
+            
+            let touch = e.touches ? e.touches[0] : e;
+            let rect = canvas.getBoundingClientRect();
+            let y = touch.clientY - rect.top;
+            
+            // Smooth movement
+            player.y += (y - player.y) * 0.1;
+            
+            // Keep player in bounds
+            player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+            
+            // Update trail
+            player.trail.push({x: player.x, y: player.y});
+            if (player.trail.length > 10) player.trail.shift();
+        }
+
+        function gameLoop() {
+            if (!game.running) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw stars
+            game.stars.forEach(star => {
+                star.x -= star.speed;
+                if (star.x < 0) {
+                    star.x = canvas.width;
+                    star.y = Math.random() * canvas.height;
+                }
+                ctx.fillStyle = 'white';
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            });
+
+            // Spawn and update enemies
+            spawnEnemy();
+            game.enemies.forEach((enemy, i) => {
+                enemy.x -= enemy.speed;
+                
+                // Check collision
+                if (player.x < enemy.x + enemy.size &&
+                    player.x + player.size > enemy.x &&
+                    player.y < enemy.y + enemy.size &&
+                    player.y + player.size > enemy.y) {
+                    game.shield -= 20;
+                    shieldDisplay.textContent = game.shield;
+                    createExplosion(enemy.x, enemy.y);
+                    game.enemies.splice(i, 1);
+                    
+                    if (game.shield <= 0) {
+                        gameOver();
+                        return;
+                    }
+                }
+
+                ctx.fillStyle = 'red';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'red';
+                ctx.fillRect(enemy.x, enemy.y, enemy.size, enemy.size);
+                ctx.shadowBlur = 0;
+            });
+            game.enemies = game.enemies.filter(enemy => enemy.x > -50);
+
+            // Spawn and update powerups
+            spawnPowerup();
+            game.powerups.forEach((powerup, i) => {
+                powerup.x -= game.speed;
+                
+                // Check collision
+                if (player.x < powerup.x + powerup.size &&
+                    player.x + player.size > powerup.x &&
+                    player.y < powerup.y + powerup.size &&
+                    player.y + player.size > powerup.y) {
+                    if (powerup.type === 'shield') {
+                        game.shield = Math.min(100, game.shield + 30);
+                        shieldDisplay.textContent = game.shield;
+                    } else {
+                        game.score += 100;
+                        scoreDisplay.textContent = game.score;
+                    }
+                    game.powerups.splice(i, 1);
+                }
+
+                ctx.fillStyle = powerup.type === 'shield' ? '#00ff00' : '#ffff00';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = powerup.type === 'shield' ? '#00ff00' : '#ffff00';
+                ctx.beginPath();
+                ctx.arc(powerup.x, powerup.y, powerup.size/2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+            game.powerups = game.powerups.filter(powerup => powerup.x > -50);
+
+            // Update particles
+            updateParticles();
+
+            // Draw player
+            drawPlayer();
+
+            // Update score
+            game.score++;
+            scoreDisplay.textContent = game.score;
+
+            // Increase difficulty
+            game.speed = 5 + Math.floor(game.score / 1000);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            game = {
+                score: 0,
+                shield: 100,
+                speed: 5,
+                running: true,
+                stars: game.stars,
+                enemies: [],
+                powerups: [],
+                particles: []
+            };
+            player.trail = [];
+            menu.style.display = 'none';
+            scoreDisplay.textContent = '0';
+            shieldDisplay.textContent = '100';
+            gameLoop();
+        }
+
+        function gameOver() {
+            game.running = false;
+            menu.style.display = 'block';
+            startBtn.textContent = 'Play Again';
+        }
+
+        // Event listeners
+        canvas.addEventListener('touchmove', movePlayer, { passive: false });
+        canvas.addEventListener('mousemove', movePlayer);
+        startBtn.addEventListener('click', startGame);
+
+        // Prevent scrolling
+        canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    </script>
+</body>
+</html>
